@@ -1,0 +1,18 @@
+Tarea 1:
+agregar introducción a regresión lineal desde max verosimilitud
+
+Tarea 2:
+Terminar las diapositivas de macro para que sirvan como guía en el taller 
+de regresión lineal, incluir la base de Dane PIBS departamentales,
+agregar cálculo de funciones de theil y de gini
+
+
+Tarea 3:
+Agregar a métodos iterativos,
+los cuadernos que tienes de:
+
+	1) raphson Newthon
+	2) Gradiente Descendente
+	
+Tarea 4:
+Agregar carpeta de Cluster y el collab del cluster que hicimios desde cero!!!
