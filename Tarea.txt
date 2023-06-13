@@ -1,0 +1,2 @@
+Tarea 1:
+agregar introducción a regresión lineal desde max verosimilitud
