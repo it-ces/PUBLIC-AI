@@ -1,2 +1,7 @@
 Tarea 1:
 agregar introducción a regresión lineal desde max verosimilitud
+
+Tarea 2:
+Terminar las diapositivas de macro para que sirvan como guía en el taller 
+de regresión lineal, incluir la base de Dane PIBS departamentales,
+agregar cálculo de funciones de theil y de gini
