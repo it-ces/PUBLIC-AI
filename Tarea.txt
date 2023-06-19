@@ -18,3 +18,10 @@ los cuadernos que tienes de:
 Tarea 4:
 Agregar carpeta de Cluster y el collab del cluster que hicimios desde cero!!!
 
+
+1.	Naive bayes
+2.	KNN (vecino más cercano)
+3.	Regresión (logística y lineal)
+4.	Redes neuronales (supliendo el problema de linealidad)
+5.	Árboles de decisión y técnicas de ensamblaje
+
