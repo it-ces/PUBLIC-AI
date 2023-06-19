@@ -1,5 +1,6 @@
 Tarea 1:
 agregar introducción a regresión lineal desde max verosimilitud
+A partir de maxima verosimilitud vamos a llegar a regresion lineal, para pasar a regresion multiple por medio de matrices
 
 Tarea 2:
 Terminar las diapositivas de macro para que sirvan como guía en el taller 
@@ -16,3 +17,4 @@ los cuadernos que tienes de:
 	
 Tarea 4:
 Agregar carpeta de Cluster y el collab del cluster que hicimios desde cero!!!
+
