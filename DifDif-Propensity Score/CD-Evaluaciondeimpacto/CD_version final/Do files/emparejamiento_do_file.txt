@@ -1,0 +1,478 @@
+*------------------------*
+*         PSM            *
+*------------------------*
+
+*----------------------------------------------------------------------------------------------------------------*
+*Algunos puntos antes de hacer el análisis:
+
+*En propensity score matching utilizamos el programa "psmatch2".
+*Dado que el paquete básico de Stata no contiene el comando "psmatch2" es necesario instalarlo:
+
+**** Instalación "psmatch2"
+ssc install psmatch2, replace
+
+*También utilizamos el programa "pscore", que es necesario instalar:
+
+**** Instalación "psmatch2"
+net from http://www.stata-journal.com/software/sj5-3
+net install st0026_2
+
+*Sobre la base de datos: Hay dos observaciones para la variable talla para la edad. ha_nchs1 indica la talla 
+*para la edad del individuo en el periodo 1 (pre-tratamiento) y ha_nchs2 indica la talla para la edad
+*en el segundo periodo (post-tratamiento). Todas las otras variables son observaciones del periodo 1. 
+
+*----------------------------------------------------------------------------------------------------------------*
+
+
+*------------------------------------*
+*1. Probabilidad de participación    *
+*------------------------------------*
+
+**** Dado que el primer paso para hacer correctamente "propensity score matching"
+**** es estimar las probabilidades de participación en el programa, en este do-file
+**** lo primero que haremos es mostrar métodos de estimación del propensity score.
+
+**** Primero debemos determinar qué variables incluir en el modelo.
+**** Sabemos que es importante no omitir ninguna variable ni sobreespecificar el modelo, por 
+**** lo tanto se debe ser cuidadoso en el momento de decidir qué variables incluir en el modelo.
+**** En este caso seguiremos la metodología propuesta en el libro, incluir variable por variable
+**** y dejar únicamente aquellas que son significativas a un nivel de significancia del 5%. 
+**** Resulta intuitivo suponer que a mayor ingreso, la probabilidad de participar aumenta, veamos:
+
+dprobit D ingresos_hogar_jefe
+
+**** Incluimos variables que consideramos razonables:
+
+
+dprobit D ingresos_hogar_jefe personas
+
+dprobit D ingresos_hogar_jefe personas orden_n
+
+dprobit D ingresos_hogar_jefe personas orden_n educa_jefe
+
+dprobit D ingresos_hogar_jefe personas orden_n educa_jefe ocupado_jefe
+
+dprobit D ingresos_hogar_jefe personas orden_n educa_jefe ocupado_jefe hombre
+
+**** El coeficiente asociado a la variable "hombre" no es significativo. Esto resulta razonable dado que, en principio,
+**** no hay razón para focalizar el tratamiento hacia un género en particular. 
+
+**** Entonces, nuestro modelo que tiene como objetivo determinar la probabilidad de participación en el programa
+**** incluye las variables ingresos del jefe del hogar, personas en el hogar, orden de nacimiento del individuo,
+**** la educación del jefe del hogar y una dummy que indica si el jefe de hogar está desempleado o no. Definimos
+**** un vector que incluya estas variables para simplificar el análisis:
+
+
+global X "personas orden_n ocupado_jefe educa_jefe ingresos_hogar_jefe"
+
+dprobit D $X
+
+**** Utilizamos las probabilidades predichas por este modelo para generar nuestro propensity score
+
+predict pscore
+
+
+**** Veamos un histograma de las probabilidades predichas:
+
+
+histogram pscore, by(D)
+
+histogram pscore if D==1, bin(100) color(blue) addplot(kdensity pscore if D==1)
+
+kdensity pscore if D==1, epanechnikov generate(x1 y1)
+
+histogram pscore if D==0, bin(100) color(blue) addplot(kdensity pscore if D==0)
+
+kdensity pscore if D==0, epanechnikov generate(x0 y0)
+
+twoway (line y1 x1) (line y0 x0, lpattern(dash)), ytitle(Densidad) xtitle(Probabilidad de ser tratado) title(Propensity Score ) legend(order(1 "Participante=1" 2 "No participante=0"))
+
+*-----------------*
+*2. Soporte común *
+*-----------------*
+
+
+**** Gráficamente vemos que las probabilidades predichas son similares. Sin embargo, resulta evidente que hay probabilidades de participación
+**** en el grupo de tratamiento superiores a la máxima probabilidad del grupo de control y, de la misma manera, probabilidades
+**** en el grupo de control inferiores a la mínima probabilidad del grupo de tratamiento. Para solucionar este problema imponemos el 
+**** soporte común mediante el máximo y el mínimo. 
+
+gen pscore_sc=pscore
+
+**** Encontramos la máxima probabilidad predicha para el grupo de control:
+sum pscore_sc if D==0
+scalar max_control=r(max)
+
+**** Encontramos la mínima probabilidad predicha para el grupo de tratamiento:
+sum pscore_sc if D==1
+scalar min_D=r(min)
+
+
+**** Ahora, no serán tenidas en cuenta probabilidades del grupo de tratamiento que superen la máxima probabilidad del grupo de control
+**** ni probabilidades del grupo de control inferiores a la mínima probabilidad del grupo de tratamiento:
+replace pscore_sc=. if D==1&pscore_sc>max_control
+replace pscore_sc=. if D==0&pscore_sc<min_D
+
+**** Vemos cuantas observaciones perdemos al imponer esta restricción:
+count if pscore!=.&pscore_sc==.
+
+**** Veamos el resultado gráficamente:
+
+drop x1 y1 x0 y0
+
+histogram pscore_sc, by(D)
+
+histogram pscore_sc if D==1, bin(100) color(blue) addplot(kdensity pscore_sc if D==1)
+
+kdensity pscore_sc if D==1, epanechnikov generate(x1 y1)
+
+histogram pscore_sc if D==0, bin(100) color(blue) addplot(kdensity pscore_sc if D==0)
+
+kdensity pscore_sc if D==0, epanechnikov generate(x0 y0)
+
+twoway (line y1 x1) (line y0 x0, lpattern(dash)), ytitle(Densidad) xtitle(Probabilidad de ser tratado) title(Propensity Score con Soporte Común ) legend(order(1 "Participante=1" 2 "No participante=0"))
+
+**** Las probabilidades almacenadas en la variable "pscore_sc" cumplen con la propiedad del soporte común mediante el máximo y el mínimo. 
+
+
+
+
+*------------------------------*
+*3. Calidad del emparejamiento *
+*------------------------------*
+
+**** Otra posibilidad para estimar la probabilidad de participación es utilizar directamente el comando "pscore".
+**** El comando "pscore" primero determina la probabilidad de participación para cada individuo de acuerdo con el modelo que 
+**** uno especifique. Posterior a esto, se dividen las observaciones en un número óptimo de bloques de manera que dentro de éstos
+**** la probabilidad media del grupo de control no es estadísticamente diferente de la probabilidad media del grupo de tratamiento. 
+**** Este es el primer paso para balancear la probabilidad de participación. Si se encuentra que dentro de un mismo bloque la probabilidad de 
+**** participación es estadísticamente diferente, se divide el bloque en dos. Una vez se determina el número de bloques mediante este procedimiento,
+**** el programa prueba, bloque por bloque, que no existan diferencias estadísticamente significativas entre los individuos de tratamiento
+**** y control para las variables incluidas para predecir la probabilidad de participación. Luego de esto, impone el soporte común.
+
+
+pscore D $X, pscore(pscore_b) blockid(id) comsup det
+
+**** La variable "id" almacena el bloque al que pertenece cada observación
+
+**** Veamos las diferencias entre el soporte común calculado manualmente y el estimado por "pscore":
+
+sum pscore_sc, detail
+
+sum pscore_b, detail
+
+**** Gráficamente, veamos las diferencias: ya teníamos la gráfica del soporte común haciéndolo manualmente.
+**** Ahora veamos el soporte común estimado por "pscore"
+
+
+drop x1 y1 x0 y0
+
+histogram pscore_b if comsup==1, by(D)
+
+histogram pscore_b if D==1 & comsup==1, bin(100) color(blue) addplot(kdensity pscore_b if D==1 & comsup==1)
+
+kdensity pscore_b if D==1 & comsup==1, epanechnikov generate(x1 y1)
+
+histogram pscore_b if D==0 & comsup==1, bin(100) color(blue) addplot(kdensity pscore_b if D==0 & comsup==1)
+
+kdensity pscore_b if D==0 & comsup==1, epanechnikov generate(x0 y0)
+
+twoway (line y1 x1) (line y0 x0, lpattern(dash)), ytitle(Densidad) xtitle(Probabilidad de ser tratado) title("pscore" ) legend(order(1 "Participante=1" 2 "No participante=0"))
+
+**** Resulta evidente que hay observaciones pertenecientes al grupo de control que tienen una probabilidad predicha inferior al mínimo del grupo de tratamiento.
+
+sum pscore_b if D==1 & comsup==1
+
+sum pscore_b if D==0 & comsup==1
+
+sum pscore_sc if D==1
+
+sum pscore_sc if D==0 
+
+**** Otro procedimiento para garantizar la calidad del emparejamiento consiste en estimar el modelo probit con las características
+**** especificadas controlando por la probabilidad predicha. En teoría, los coeficientes asociados a las características de los individuos
+**** no deben ser estadísticamente significativos:
+
+dprobit D pscore $X
+
+**** Entonces, dado que ningún coeficiente es significativo, podemos estar seguros de que el 
+**** emparejamiento es adecuado. 
+
+*-------------------------------------------------------------------*
+*4. Selección de un algoritmo de emparejamiento (talla para la edad)*
+*-------------------------------------------------------------------*
+
+**** 4.1 Al utilizar el emparejamiento por vecino más cercano, el programa "psmatch2"
+**** empareja a cada individuo del grupo de tratamiento con el individuo del grupo de control
+**** que tiene una probabilidad más cercana. Sin embargo, cuando se presentan casos en los que
+**** hay varios individuos en el grupo de control a la misma distancia de un solo individuo de tratamiento
+**** debemos asegurarnos de que el orden en el que se presentan los datos en nuestra base sea aleatorio.
+**** Definimos la semilla en 10 arbitrariamente con el objetivo de poder replicar los resultados.
+
+set seed 50
+drawnorm orden
+sort orden
+
+**** 4.1 Estimador PSM por vecino más cercano. El comando "psmatch2" calcula el propensity score
+**** y tiene en cuenta únicamente a quienes están dentro del soporte común, o nosotros podemos
+**** indicarle qué variable debe utilizar como propensity score:
+
+psmatch2 D $X, outcome(ha_nchs2) n(1) com
+
+drop x1 y1 x0 y0
+
+histogram pscore if _support==1, by(D)
+
+histogram pscore if D==1 & _support==1, bin(100) color(blue) addplot(kdensity pscore_b if D==1 & _support==1)
+
+kdensity pscore if D==1 & _support==1, epanechnikov generate(x1 y1)
+
+histogram pscore if D==0 & _support==1, bin(100) color(blue) addplot(kdensity pscore_b if D==0 & _support==1)
+
+kdensity pscore if D==0 & _support==1, epanechnikov generate(x0 y0)
+
+twoway (line y1 x1) (line y0 x0, lpattern(dash)), ytitle(Densidad) xtitle(Probabilidad de ser tratado) title("psmatch2" ) legend(order(1 "Participante=1" 2 "No participante=0"))
+
+sum pscore if D==1 & _support==1
+
+sum pscore if D==0 & _support==1
+
+
+**** Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(ha_nchs2) n(1) trim(20)
+
+**** 4.2 Matching con 5 vecinos
+
+
+**** 4.2.1 Imponiendo el soporte común del comando.
+
+psmatch2 D $X, outcome(ha_nchs2) n(5) com
+
+**** 4.2.1 Imponiendo el soporte común mediante trimming.
+
+psmatch2 D $X, outcome(ha_nchs2) n(5) trim(20)
+
+
+**** 4.3 Matching con 10 vecinos
+
+**** 4.3.1 Imponiendo el soporte común del comando:
+
+psmatch2 D $X, outcome(ha_nchs2) n(10) com
+
+**** 4.3.2 Imponiendo el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(ha_nchs2) n(10) trim(20)
+
+**** 4.4.1 Emparejamiento de distancia máxima soporte común com
+
+psmatch2 D $X, outcome(ha_nchs2) radius caliper(0.001) com
+
+psmatch2 D $X, outcome(ha_nchs2) radius caliper(0.005) com		
+
+**** 4.4.2 Emparejamiento de distancia máxima soporte común trimming
+
+psmatch2 D $X, outcome(ha_nchs2) radius caliper(0.001) trim(20)
+
+psmatch2 D $X, outcome(ha_nchs2) radius caliper(0.005) trim(20)	
+
+**** 4.5.1 Emparejamiento por kernel soporte común com
+
+psmatch2 D $X, outcome(ha_nchs2) com kernel
+
+bootstrap r(att) : psmatch2 D $X, out(ha_nchs2) com kernel
+
+**** 4.5.2 Emparejamiento por kernel soporte común trimming
+
+psmatch2 D $X, outcome(ha_nchs2) trim(20) kernel
+
+bootstrap r(att) : psmatch2 D $X, out(ha_nchs2) trim(20) kernel
+
+***** 4.6.1 Estimador por lineal local soporte común com
+
+psmatch2 D $X, llr outcome(ha_nchs2) common
+
+bootstrap r(att) : psmatch2 D $X, llr outcome(ha_nchs2) common
+
+***** 4.6.2 Estimador por lineal local soporte común trimming(20)
+
+psmatch2 D $X, llr outcome(ha_nchs2) trim(20)
+
+bootstrap r(att) : psmatch2 D $X, llr outcome(ha_nchs2) trim(20)
+
+*---------------------------------------------------------------------*
+*5. Selección de un algoritmo de emparejamiento (desnutrición crónica)*
+*---------------------------------------------------------------------*
+
+
+
+**** 5.1 Estimador PSM por vecino más cercano.
+
+**** 5.1.1 Imponiendo el soporte común mediante el comando:
+
+psmatch2 D $X, outcome(desn_cr) n(1) com
+
+**** 5.1.2 Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(desn_cr) n(1) trim(20)
+
+**** 5.2 Matching con 5 vecinos
+
+**** 5.2.1 Imponiendo el soporte común mediante el comando:
+
+psmatch2 D $X, outcome(desn_cr) n(5) com
+
+**** 5.2.2 Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(desn_cr) n(5) trim(20)
+
+
+**** 5.3 Matching con 10 vecinos
+
+**** 5.3.1 Imponiendo el soporte común mediante el comando:
+
+psmatch2 D $X, outcome(desn_cr) n(10) com
+
+**** 5.3.2 Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(desn_cr) n(10) trim(20)
+
+**** 5.4.1 Emparejamiento de distancia máxima soporte común com
+
+psmatch2 D $X, outcome(desn_cr) radius caliper(0.001) com
+
+psmatch2 D $X, outcome(desn_cr) radius caliper(0.005) com		
+
+**** 5.4.2 Emparejamiento de distancia máxima soporte común trimming
+
+psmatch2 D $X, outcome(desn_cr) radius caliper(0.001) trim(20)
+
+psmatch2 D $X, outcome(desn_cr) radius caliper(0.005) trim(20)	
+
+**** 5.5.1 Emparejamiento por kernel soporte común com
+
+psmatch2 D $X, outcome(desn_cr) com kernel
+
+bootstrap r(att) : psmatch2 D $X, out(desn_cr) com kernel
+
+**** 5.5.2 Emparejamiento por kernel soporte común trimming
+
+psmatch2 D $X, outcome(desn_cr) trim(20) kernel
+
+bootstrap r(att) : psmatch2 D $X, out(desn_cr) trim(20) kernel
+
+***** 5.6.1 Estimador por lineal local soporte común com
+
+psmatch2 D $X, llr outcome(desn_cr) common
+
+bootstrap r(att) : psmatch2 D $X, llr outcome(desn_cr) common
+
+***** 5.6.2 Estimador por lineal local soporte común trimming
+
+psmatch2 D $X, llr outcome(desn_cr) trim(20)
+
+bootstrap r(att) : psmatch2 D $X, llr outcome(desn_cr) trim(20)
+
+
+*-----------------------------------* 
+* 6. Dobles diferencias emparejadas *
+*-----------------------------------*
+
+**** En este capítulo utilizaremos la metodología de dobles diferencias emparejadas para evaluar
+**** la evolución de la variable "talla para la edad" de los individuos en dos periodos.
+
+**** Lo primero que debemos hacer es generar la variable de diferencia entre las dos observaciones:
+
+gen delta_ha=ha_nchs2-ha_nchs1
+
+**** Ahora utilizamos propensity score matching para evaluar la diferencia en la evolución de la talla para
+**** la edad entre individuos tratados y no tratados:
+
+
+**** 6.1 Estimador PSM por vecino más cercano.
+
+**** 6.1.1 Imponiendo el soporte común mediante el comando:
+
+psmatch2 D $X, outcome(delta_ha) n(1) com
+
+**** 6.1.2 Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(delta_ha) n(1) trim(20)
+
+**** 6.2 Matching con 5 vecinos
+
+**** 6.2.1 Imponiendo el soporte común mediante el comando:
+
+psmatch2 D $X, outcome(delta_ha) n(5) com
+
+**** 6.2.2 Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(delta_ha) n(5) trim(20)
+
+
+**** 6.3 Matching con 10 vecinos
+
+**** 6.3.1 Imponiendo el soporte común mediante el comando:
+
+psmatch2 D $X, outcome(delta_ha) n(10) com
+
+**** 6.3.2 Ahora imponemos el soporte común mediante trimming:
+
+psmatch2 D $X, outcome(delta_ha) n(10) trim(20)
+
+**** 6.4.1 Emparejamiento de distancia máxima soporte común com
+
+psmatch2 D $X, outcome(delta_ha) radius caliper(0.001) com
+
+psmatch2 D $X, outcome(delta_ha) radius caliper(0.005) com		
+
+**** 6.4.2 Emparejamiento de distancia máxima soporte común trimming
+
+psmatch2 D $X, outcome(delta_ha) radius caliper(0.001) trim(20)
+
+psmatch2 D $X, outcome(delta_ha) radius caliper(0.005) trim(20)	
+
+
+**** 6.5.1 Emparejamiento por kernel soporte común com
+
+psmatch2 D $X, outcome(delta_ha) com kernel
+
+bootstrap r(att) : psmatch2 D $X, out(delta_ha) com kernel
+
+**** 6.5.2 Emparejamiento por kernel soporte común trimming
+
+psmatch2 D $X, outcome(delta_ha) trim(20) kernel
+
+bootstrap r(att) : psmatch2 D $X, out(delta_ha) trim(20) kernel
+
+***** 6.6.1 Estimador por lineal local soporte común com
+
+psmatch2 D $X, llr outcome(delta_ha) common
+
+bootstrap r(att) : psmatch2 D $X, llr outcome(delta_ha) common
+
+***** 6.6.2 Estimador por lineal local soporte común trimming
+
+psmatch2 D $X, llr outcome(delta_ha) trim(20)
+
+bootstrap r(att) : psmatch2 D $X, llr outcome(delta_ha) trim(20)
+
+
+**** 7. Utilización de pesos muestrales en matching.
+
+**** La metodología de propensity score matching también permite incluir pesos muestrales en sus estimaciones. 
+**** Con el comando presentado en este archivo (psmatch2) se puede dar la opción de utilizar pesos muestrales
+**** mediante el siguiente comando:
+
+**** psmatch2 t x, outcome(y) w(Z)  n(1) com
+
+**** En este caso, Z sería la matriz de pesos a utilizar. Otra posibilidad es utilizar el comando
+**** "attnd". Su instalación también se hace en la pestaña de búsqueda de Stata. Una vez instalado,
+**** el comando para hacer matching con pesos es el siguiente:
+
+**** attnd y t x, [pweight=z]
+
+**** En este caso z sería la variable que indica el peso muestral otorgado a cada observación.
+
+
+

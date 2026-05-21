@@ -1,0 +1,235 @@
+*-----------------------------------*
+*    Variables instrumentales       *
+*-----------------------------------*
+
+*Antes de hacer el análisis:
+
+*En variables instrumentales utilizamos el programa "ivreg2".
+*Dado que el paquete básico de Stata no contiene el comando "ivreg2" es necesario instalarlo:
+
+**** Instalación "ivreg2"
+net from http://fmwww.bc.edu/RePEc/bocode/i
+net install ivreg2, replace
+
+*Así como algunos paquetes adicionales
+* "ranktest"
+ssc install ranktest
+
+* "overid"
+net from http://www.stata-journal.com/software/sj7-4
+net install st0030_3, replace 
+
+
+*----------------------------------------------------------------------------------------------------------------*
+*En el capítulo de variables instrumentales se utilizará el comando "ivreg2". Dado que este comando no viene
+*incluido en el paquete básico de Stata, es necesario instalarlo. Para instalarlo debemos seleccionar 
+*la pestaña "help" de Stata, en la opción search y seleccionamos
+*search all. Buscamos "ivreg2" y seleccionamos el paquete st0030_2 para instalarlo. 
+*----------------------------------------------------------------------------------------------------------------*
+
+**** Para simplificar el análisis definimos un vector global con las variables que se han utilizado antes:
+
+global X "personas orden_n ocupado_jefe educa_jefe ingresos_hogar_jefe"
+
+**** Cuando un regresor tiene alguna relación con el término de error, se viola uno de los supuestos básicos
+**** de MCO y por lo tanto, estimaciones mediante este método arrojarían resultados sesgados. En nuestro
+**** ejemplo, el tratamiento puede estar relacionado con variables no observables como el nivel de preocupación
+**** de una madre frente a su hijo o el conocimiento que ésta tiene sobre el desarrollo adecuado de los niños.
+
+**** Veamos los resultados de una estimación simple por MCO:
+
+reg ha_nchs D $X
+
+**** Los resultados nos indican que el tratamiento tiene un efecto de 0.248 en la talla para la edad
+**** de los individuos. Sin embargo, dado el problema de autoselección, este resultado puede estar sesgado. 
+**** Para proceder a utilizar la metodología de variables instrumentales debemos seleccionar instrumentos
+**** que sean relevantes y exógenos. En principio, el número de oficinas operadoras en el municipio determina
+**** en cierta medida la probabilidad de participación sin tener relación con las variables no observables. 
+**** Lo mismo sucede con la distancia del hogar a la oficina operadora más cercana. Antes de utilizar
+**** estos instrumentos realizamos pruebas de relevancia y exogeneidad:
+
+*------------------*
+* 1. Relevancia    *
+*------------------*
+
+**** Para evaluar la relevancia de un instrumento se pueden utilizar diferentes pruebas. En este caso vamos a utilizar
+**** una estimación por MCO, la prueba canónica de Anderson, la prueba de Cragg-Donald y la prueba de Stock y Yoko. 
+
+**** 1.1 Distancia
+
+**** 1.1.1 Regresión MCO 
+
+reg D distancia
+
+reg D $X distancia
+
+**** Vemos que la distancia sí puede ser un buen predictor de la variable "D". 
+**** El valor del estadístico F es 19,23. Según Stock y Watson pg. 443, (2.007), si el estadístico
+**** F es superior a diez, se puede asegurar que el instrumento es relevante. Además, todos los coeficientes
+**** son estadísticamente significativos.
+
+**** 1.1.2 Prueba canónica de Anderson
+
+ivreg2 ha_nchs $X (D=distancia)
+
+**** La hipótesis nula de esta prueba es que la ecuación está subidentificada. Dado que la rechazamos, la
+**** prueba canónica de Anderson (Underidentification test) nos permite estar más seguros de la relevancia de nuestro instrumento.
+
+**** 1.1.3 Prueba Cragg-Donald
+
+ivreg2 ha_nchs $X (D=distancia), first
+
+**** La prueba Cragg-Donald tiene la misma hipótesis nula que la prueba canónica de Anderson pero 
+**** el estadístico de prueba se construye de manera diferente. En este caso, también rechazamos
+**** la hipótesis nula. 
+
+**** 1.1.4 Prueba de Stock y Yoko
+
+ivreg2 ha_nchs $X (D=distancia), first
+
+**** Para esta prueba utilizamos el estadístico Cragg-Donald y nos remitimos al valor reportado en la tabla de Stock y Yoko (2002).
+
+*Realizamos las mismas pruebas para el instrumento "of_op":
+
+**** 1.2 of_op
+
+**** 1.2.1 Regresión MCO 
+
+reg D of_op
+
+reg D $X of_op
+
+**** 1.2.2 Prueba canónica de Anderson
+
+ivreg2 ha_nchs $X (D=of_op)
+
+**** 1.2.3 Prueba Cragg-Donald
+
+ivreg2 ha_nchs $X (D=of_op), first
+
+**** 1.2.4 Prueba de Stock y Yoko
+
+ivreg2 ha_nchs $X (D=of_op), first
+
+**** Ahora realizamos las mismas pruebas utilizando los dos instrumentos:
+
+**** 1.3 Distancia y oficinas operadoras:
+
+**** 1.3.1 Regresión MCO 
+
+reg D of_op distancia
+
+reg D $X of_op distancia
+
+test distancia=of_op=0
+
+**** 1.3.2 Prueba canónica de Anderson
+
+ivreg2 ha_nchs $X (D=of_op distancia)
+
+**** 1.3.3 Prueba Cragg-Donald
+
+ivreg2 ha_nchs $X (D=of_op distancia), first
+
+**** 1.3.4 Prueba de Stock y Yoko
+
+ivreg2 ha_nchs $X (D=of_op distancia), first
+
+**** Podemos concluir, por lo tanto, que los instrumentos son relevantes.
+
+
+*------------------*
+* 2. Exogeneidad   *
+*------------------*
+
+**** Al igual que probamos la relevancia de los instrumentos, la exogeneidad la probaremos
+**** en cada uno de los instrumentos y después utilizando los dos. 
+
+**** 2.1 Distancia
+
+**** 2.1.1 Regresión de errores en función del instrumento.
+
+**** Lo que vamos a hacer es predecir los errores de MCO y verificar que estos no estén relacionados
+**** con el instrumento
+
+reg ha_nchs D $X
+
+predict uhat, residuals
+
+reg uhat distancia
+
+**** Vemos que la variable distancia no es significativa y tampoco lo es el modelo.
+**** Para utilizar las otras pruebas de exogeneidad es necesario que el número
+**** de instrumentso exceda el número de variables a instrumentar. Estas pruebas
+**** serán llevadas a cabo cuando evaluemos la exogeneidad de la distancia y las 
+**** oficinas operadoras de manera conjunta.
+
+**** 2.2 Oficinas operadoras
+
+**** 2.2.1 Regresión de errores en función del instrumento
+
+reg uhat of_op
+
+**** Vemos que of_op aparentemente no predice bien los errores.
+
+**** 2.3 Distancia y Oficinas operadoras
+
+**** 2.2.1 Regresión de errores en función de los instrumentos
+
+reg uhat of_op distancia
+
+**** 2.2.2 Prueba de Sargan
+
+ivreg2 ha_nchs $X (D=of_op distancia)
+
+**** La hipótesis nula de esta prueba es que los instrumentos son exógenos. Rechazarla nos llevaría a dudar
+**** sobre la validez de los instrumentos. En este caso no podemos rechazar esta prueba.
+
+**** 2.2.3 Sargan y Basmann
+
+overid
+
+**** Utilizando el comando "overid" luego de llevar a cabo una estimación por variables instrumentales
+**** se lleva a cabo la prueba de Sargan y la de Basmann. La prueba de Sargan ya la vimos, la de Basmann
+**** es una prueba análoga. Sin embargo, el estadístico de prueba se construye de manera diferente. 
+
+****2.2.4 Prueba "J".
+
+**** La prueba "J" es análoga a la prueba de Sargan pero se utiliza cuando la estimación se hace mediante
+**** el método generalizado de momentos:
+
+ivreg2 ha_nchs $X (D=of_op distancia), gmm2s robust
+
+
+*----------------------------*
+*  3. Estimación por MC2E    *
+*----------------------------*
+
+**** Dado que ya probamos que los instrumentos que tenemos pueden ser utilizados, procedemos
+**** a realizar la estimación mediante MCO en dos etapas. 
+
+**** 3.1 Primera etapa, predicción de la variable endógena (D) utilizando los 
+**** regresores exógenos y los instrumentos (distancia y of_op):
+
+drop uhat
+
+probit D $X distancia of_op
+
+predict trat_hat
+
+
+**** 3.2 Segunda etapa, regresión donde la variable dependiente es la talla para la edad y 
+**** se utilizan las variables predichas por la anterior regresión (trata_hat) para instrumentar
+**** la participación en el programa:
+
+ivreg2 ha_nchs  $X (D=trat_hat), first
+
+**** Para llevar a cabo la estimación de manera directa con el comando "ivreg2" instrumentando el tratamiento con la distancia y el
+**** número de oficinas operadoras en el municipio:
+
+ivreg2 ha_nchs $X (D=distancia of_op), first
+
+**** Utilizando mínimos cuadrados en dos etapas vemos que el efecto del tratamiento se disminuye significativamente. 
+**** Mediante MCO el efecto del tratamiento en la talla para la edad era de 0.24 desviaciones estándar. Sin embargo,
+**** mediante MC2E pudimos confirmar que en realidad el efecto es 0.21. 
+	

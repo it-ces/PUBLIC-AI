@@ -1,0 +1,71 @@
+                          *------------------------------------------------------------------------------------*
+				  *-------------------------    Diferencias en diferencias    -------------------------*
+				  *------------------------------------------------------------------------------------*
+		
+								  *    Corte Transversal Repetido      *
+   
+
+
+*----------------------------------------------------------------------------------------------------------------*
+*Para simplificar los comandos definimos un vector X compuesto de las principales características del hogar
+
+global X "educa_jefe baja orden_n hombre ocupado_jefe personas ingresos_hogar_jefe"
+
+
+*En esta base de datos contamos con 8.000 observaciones. Las primeras 4.000 corresponden a observaciones del primer periodo
+* y el resto son del siguiente. La variable "t" es una dummy que nos indica el periodo de observación del individuo. La variable "D"
+*nos indica si el individuo corresponde al grupo de tratamiento (1) o al grupo de control (0). 
+*----------------------------------------------------------------------------------------------------------------*
+
+
+*-------------------------------------------*
+*1. Veamos algunas estadísticas descriptivas
+*-------------------------------------------*
+
+
+*Talla para la edad de los individuos del grupo de tratamiento en el primer periodo
+sum ha_nchs if D==1 & t==0
+
+*Talla para la edad de los individuos del grupo de control en el primer periodo
+sum ha_nchs if D==0 & t==0
+
+*Talla para la edad de los individuos del grupo de tratamiento en el segundo periodo
+sum ha_nchs if D==1 & t==1
+
+*Talla para la edad de los individuos del grupo de control en el segundo periodo
+sum ha_nchs if D==0 & t==1
+
+
+**** Resulta evidente, simplemente analizando estas estadísticas descriptivas, que existe una diferencia
+**** entre el grupo de tratamiento y de control en lo referente a la variable "ha_nchs". Además
+**** podemos ver que esta diferencia se incrementa en el tiempo. 
+
+*-----------------------------------------------------------------------------------*
+*2. El modelo de diferencias-en-diferencias con datos de corte transversal repetidos*
+*-----------------------------------------------------------------------------------*
+
+*Para desarrollar el modelo de diferencias en diferencias con datos de corte transversal
+*repetidos primero debemos crear la interacción del tratamiento con el periodo:
+
+gen Dxt=D*t
+
+*Ahora, los resultados del corte transversal repetido sin utilizar regresores adicionales:
+
+reg  ha_nchs D t Dxt 
+
+*Vemos que independientemente de si el individuo pertenece al grupo de tratamiento o de control, hay una mejora en la talla para la edad (ha_nchs)
+*al pasar al segundo periodo. El efecto del tratamiento por diferencias en diferencias está dado por el coeficiente de la variable Dxt.
+*La diferencia entre el grupo de control y de tratamiento se incrementa en 0.18 al pasar del primer periodo al siguiente. 
+
+
+*--------------------------------------------------------*
+*2.1 El modelo de diferencias-en-diferencias con datos de *
+* corte transversal repetidos y regresores adicionales   *
+*--------------------------------------------------------*
+
+reg  ha_nchs D t Dxt  $X
+
+*Al utilizar regresores adicionales la significancia de las variables se incrementa. Además podemos ver que la variable "ha_nchs"
+*depende de factores adicionales como el orden de nacimiento, la raza del individuo, la educación del jefe de hogar, el número 
+*de personas que viven en el hogar y los ingresos del jefe del hogar. 
+
